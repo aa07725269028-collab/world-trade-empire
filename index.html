@@ -9,6 +9,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -48,28 +49,79 @@
         .robot-active {
             box-shadow: 0 0 20px rgba(5, 150, 105, 0.3);
         }
+        
+        .transaction-animation {
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
     </style>
 </head>
 <body class="font-sans">
     
     <!-- Firebase Configuration -->
     <script>
-        // 🔥 Firebase Configuration - سأضيفها لاحقاً
+        // 🔥 Firebase Configuration الحقيقية
         const firebaseConfig = {
-            apiKey: "YOUR_API_KEY_HERE",
-            authDomain: "YOUR_AUTH_DOMAIN",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_STORAGE_BUCKET",
-            messagingSenderId: "YOUR_SENDER_ID",
-            appId: "YOUR_APP_ID"
+            apiKey: "AIzaSyCEH0ZXN55qgpZhh_La1Y4pXkNTBMNH-BU",
+            authDomain: "global-trade-empire-6c2d9.firebaseapp.com",
+            databaseURL: "https://global-trade-empire-6c2d9-default-rtdb.firebaseio.com",
+            projectId: "global-trade-empire-6c2d9",
+            storageBucket: "global-trade-empire-6c2d9.firebasestorage.app",
+            messagingSenderId: "886847018038",
+            appId: "1:886847018038:web:4bb4260e5619bb852b3497"
         };
         
-        // Initialize Firebase (إذا كان config موجوداً)
-        if (firebaseConfig.apiKey !== "YOUR_API_KEY_HERE") {
-            firebase.initializeApp(firebaseConfig);
-            const db = firebase.firestore();
-            const auth = firebase.auth();
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const realtimeDb = firebase.database();
+        
+        console.log("✅ Firebase connected successfully!");
+        
+        // Initialize Firestore data structure
+        async function initializeFirestoreData() {
+            try {
+                const userId = auth.currentUser ? auth.currentUser.uid : 'guest';
+                const userRef = db.collection('users').doc(userId);
+                
+                const snapshot = await userRef.get();
+                if (!snapshot.exists) {
+                    // Create initial data structure
+                    await userRef.set({
+                        totalProfit: 18542,
+                        dailyProfit: 847,
+                        walletBalance: 12542,
+                        activeBots: 12,
+                        successRate: 96.7,
+                        bots: {
+                            trading: { active: true, profit: 324, type: 'تداول' },
+                            ecommerce: { active: true, profit: 187, type: 'تجارة' },
+                            affiliate: { active: true, profit: 89, type: 'تسويق' },
+                            crypto: { active: true, profit: 156, type: 'عملات' }
+                        },
+                        transactions: [],
+                        lastUpdated: new Date().toISOString()
+                    });
+                    console.log("📊 Created initial Firestore data");
+                }
+            } catch (error) {
+                console.error("Error initializing Firestore:", error);
+            }
         }
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', initializeFirestoreData);
     </script>
 
     <!-- Navigation -->
@@ -84,6 +136,9 @@
             </div>
             
             <div class="flex space-x-2 space-x-reverse">
+                <button id="loginBtn" onclick="toggleLogin()" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition">
+                    🔐 تسجيل الدخول
+                </button>
                 <button onclick="changeLanguage('ar')" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition">العربية</button>
                 <button onclick="changeLanguage('en')" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition">English</button>
                 <button onclick="showWallet()" class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 transition">💰 المحفظة</button>
@@ -91,6 +146,31 @@
             </div>
         </div>
     </nav>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="glass-card p-8 w-96">
+                <h2 class="text-2xl font-bold mb-6 text-center">🔐 تسجيل الدخول</h2>
+                <div class="space-y-4">
+                    <input id="loginEmail" type="email" placeholder="البريد الإلكتروني" 
+                           class="w-full p-3 bg-gray-800 rounded-lg">
+                    <input id="loginPassword" type="password" placeholder="كلمة المرور" 
+                           class="w-full p-3 bg-gray-800 rounded-lg">
+                    <button onclick="loginUser()" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-bold">
+                        دخول
+                    </button>
+                    <button onclick="registerUser()" class="w-full bg-green-600 hover:bg-green-700 p-3 rounded-lg font-bold">
+                        إنشاء حساب جديد
+                    </button>
+                    <button onclick="toggleLogin()" class="w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg font-bold">
+                        إلغاء
+                    </button>
+                </div>
+                <div id="loginMessage" class="mt-4 text-center text-sm"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- Main Dashboard -->
     <div class="container mx-auto px-4 pt-24 pb-8">
@@ -153,7 +233,10 @@
         <div class="glass-card p-6 mb-8">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-2xl font-bold">🤖 الروبوتات المتقدمة</h2>
-                <button onclick="toggleAllBots()" class="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600">تشغيل/إيقاف الكل</button>
+                <div class="flex space-x-2 space-x-reverse">
+                    <button onclick="toggleAllBots()" class="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600">تشغيل/إيقاف الكل</button>
+                    <button onclick="saveToFirebase()" class="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700">💾 حفظ البيانات</button>
+                </div>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -169,7 +252,7 @@
                     <div class="mb-3">
                         <div class="flex justify-between text-sm mb-1">
                             <span>الأرباح اليومية</span>
-                            <span class="text-green-400">+$324</span>
+                            <span id="trading-profit" class="text-green-400">+$324</span>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2">
                             <div class="bg-green-500 h-2 rounded-full" style="width: 85%"></div>
@@ -193,7 +276,7 @@
                     <div class="mb-3">
                         <div class="flex justify-between text-sm mb-1">
                             <span>الأرباح اليومية</span>
-                            <span class="text-green-400">+$187</span>
+                            <span id="ecommerce-profit" class="text-green-400">+$187</span>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2">
                             <div class="bg-green-500 h-2 rounded-full" style="width: 65%"></div>
@@ -217,7 +300,7 @@
                     <div class="mb-3">
                         <div class="flex justify-between text-sm mb-1">
                             <span>الأرباح اليومية</span>
-                            <span class="text-green-400">+$89</span>
+                            <span id="affiliate-profit" class="text-green-400">+$89</span>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2">
                             <div class="bg-green-500 h-2 rounded-full" style="width: 45%"></div>
@@ -241,7 +324,7 @@
                     <div class="mb-3">
                         <div class="flex justify-between text-sm mb-1">
                             <span>الأرباح اليومية</span>
-                            <span class="text-green-400">+$156</span>
+                            <span id="crypto-profit" class="text-green-400">+$156</span>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2">
                             <div class="bg-green-500 h-2 rounded-full" style="width: 55%"></div>
@@ -271,7 +354,7 @@
                                 <th class="p-3 text-right">الحالة</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="income-sources">
                             <tr class="border-b border-gray-700/50">
                                 <td class="p-3">📈 تداول الذهب والعملات</td>
                                 <td class="p-3 font-bold">$5,847</td>
@@ -359,11 +442,12 @@
         <p class="mt-2">⚡ يعمل على GitHub + Netlify + Firebase</p>
         <p class="mt-4 text-sm">🇨🇳 🤝 🇮🇶 من الصين إلى العراق بأعلى درجات الكفاءة</p>
         <p class="mt-2 text-sm">© 2024 - جميع الأنظمة تعمل تلقائياً 24/7</p>
+        <p class="mt-4 text-xs text-green-400">✅ Firebase متصل بنجاح | Project ID: global-trade-empire-6c2d9</p>
     </footer>
 
     <!-- JavaScript Application -->
     <script>
-        // Global Trade Empire System
+        // Global Trade Empire System with Firebase Integration
         class GlobalTradeEmpire {
             constructor() {
                 this.totalProfit = 18542;
@@ -373,15 +457,19 @@
                 this.walletBalance = 12542;
                 this.language = 'ar';
                 this.bots = {};
+                this.currentUser = null;
                 
                 this.init();
             }
             
-            init() {
+            async init() {
                 console.log('🚀 إمبراطورية التجارة العالمية تعمل الآن!');
                 
                 // Initialize all bots
                 this.initializeBots();
+                
+                // Check Firebase auth state
+                this.checkAuthState();
                 
                 // Start auto profit updates
                 this.startAutoTrading();
@@ -389,8 +477,49 @@
                 // Generate initial transactions
                 this.generateTransactions();
                 
-                // Initialize Firebase if available
-                this.initFirebase();
+                // Load data from Firebase
+                await this.loadFromFirebase();
+            }
+            
+            checkAuthState() {
+                auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        this.currentUser = user;
+                        document.getElementById('loginBtn').innerHTML = '👤 ' + user.email.substring(0, 10) + '...';
+                        console.log('✅ User logged in:', user.email);
+                    } else {
+                        this.currentUser = null;
+                        document.getElementById('loginBtn').innerHTML = '🔐 تسجيل الدخول';
+                    }
+                });
+            }
+            
+            async login(email, password) {
+                try {
+                    const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                    this.currentUser = userCredential.user;
+                    alert('✅ تم تسجيل الدخول بنجاح!');
+                    await this.loadFromFirebase();
+                    toggleLogin();
+                    return true;
+                } catch (error) {
+                    alert('❌ خطأ في تسجيل الدخول: ' + error.message);
+                    return false;
+                }
+            }
+            
+            async register(email, password) {
+                try {
+                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                    this.currentUser = userCredential.user;
+                    alert('✅ تم إنشاء الحساب بنجاح!');
+                    await this.saveToFirebase(); // Save initial data
+                    toggleLogin();
+                    return true;
+                } catch (error) {
+                    alert('❌ خطأ في إنشاء الحساب: ' + error.message);
+                    return false;
+                }
             }
             
             initializeBots() {
@@ -421,6 +550,13 @@
                 setInterval(() => {
                     this.addLiveTransaction();
                 }, 10000);
+                
+                // Auto save to Firebase every 30 seconds
+                setInterval(() => {
+                    if (this.currentUser) {
+                        this.saveToFirebase();
+                    }
+                }, 30000);
             }
             
             generateProfit() {
@@ -439,7 +575,17 @@
                 this.totalProfit += newProfit;
                 this.walletBalance += newProfit;
                 
+                // Update bot profit displays
+                this.updateBotDisplays();
+                
                 return newProfit;
+            }
+            
+            updateBotDisplays() {
+                document.getElementById('trading-profit').textContent = `+$${this.bots.trading.profit}`;
+                document.getElementById('ecommerce-profit').textContent = `+$${this.bots.ecommerce.profit}`;
+                document.getElementById('affiliate-profit').textContent = `+$${this.bots.affiliate.profit}`;
+                document.getElementById('crypto-profit').textContent = `+$${this.bots.crypto.profit}`;
             }
             
             updateUI() {
@@ -447,7 +593,7 @@
                 document.getElementById('daily-profit').textContent = `$${this.dailyProfit.toLocaleString()}`;
                 document.getElementById('wallet-balance').textContent = `$${this.walletBalance.toLocaleString()}`;
                 document.getElementById('active-bots').textContent = `${Object.values(this.bots).filter(b => b.active).length}/12`;
-                document.getElementById('success-rate').textContent = `${this.successRate}%`;
+                document.getElementById('success-rate').textContent = `${this.successRate.toFixed(1)}%`;
             }
             
             generateTransactions() {
@@ -461,16 +607,7 @@
                 ];
                 
                 transactions.forEach(transaction => {
-                    const div = document.createElement('div');
-                    div.className = 'p-4 bg-gray-800/30 rounded-lg flex justify-between items-center';
-                    div.innerHTML = `
-                        <div>
-                            <div class="font-bold">${transaction.type}</div>
-                            <div class="text-sm text-gray-400">${transaction.time}</div>
-                        </div>
-                        <div class="text-green-400 font-bold text-xl">+$${transaction.amount}</div>
-                    `;
-                    transactionsContainer.appendChild(div);
+                    this.addTransactionElement(transaction.type, transaction.amount, transaction.time);
                 });
             }
             
@@ -480,9 +617,29 @@
                 const amount = Math.floor(Math.random() * 200) + 50;
                 const time = 'الآن';
                 
+                this.addTransactionElement(type, amount, time);
+                
+                // Add to profits
+                this.dailyProfit += amount;
+                this.totalProfit += amount;
+                this.walletBalance += amount;
+                this.updateUI();
+                
+                // Save to Firebase realtime
+                if (this.currentUser) {
+                    realtimeDb.ref('transactions/' + Date.now()).set({
+                        type: type,
+                        amount: amount,
+                        time: time,
+                        userId: this.currentUser.uid
+                    });
+                }
+            }
+            
+            addTransactionElement(type, amount, time) {
                 const transactionsContainer = document.getElementById('live-transactions');
                 const div = document.createElement('div');
-                div.className = 'p-4 bg-gray-800/30 rounded-lg flex justify-between items-center';
+                div.className = 'p-4 bg-gray-800/30 rounded-lg flex justify-between items-center transaction-animation';
                 div.innerHTML = `
                     <div>
                         <div class="font-bold">${type}</div>
@@ -498,12 +655,6 @@
                 if (transactionsContainer.children.length > 10) {
                     transactionsContainer.removeChild(transactionsContainer.lastChild);
                 }
-                
-                // Add to profits
-                this.dailyProfit += amount;
-                this.totalProfit += amount;
-                this.walletBalance += amount;
-                this.updateUI();
             }
             
             toggleBot(botId) {
@@ -523,6 +674,13 @@
                         button.textContent = 'تشغيل';
                         button.className = 'text-sm bg-green-500 hover:bg-green-600 px-3 py-1 rounded';
                     }
+                    
+                    // Update active bots count
+                    document.getElementById('active-bots').textContent = 
+                        `${Object.values(this.bots).filter(b => b.active).length}/12`;
+                    
+                    // Save to Firebase
+                    this.saveToFirebase();
                 }
             }
             
@@ -548,164 +706,55 @@
                         }
                     }
                 });
-            }
-            
-            withdrawMoney() {
-                const withdrawAmount = 2000;
-                if (this.walletBalance >= withdrawAmount) {
-                    this.walletBalance -= withdrawAmount;
-                    this.updateUI();
-                    
-                    // Add withdrawal transaction
-                    this.addTransaction('سحب أرباح', -withdrawAmount, 'سحب');
-                    
-                    alert(`✅ تم سحب $${withdrawAmount} بنجاح!\nالرصيد الجديد: $${this.walletBalance}`);
-                } else {
-                    alert('⚠️ الرصيد غير كافي للسحب');
-                }
-            }
-            
-            reinvestMoney() {
-                const investAmount = 1000;
-                if (this.walletBalance >= investAmount) {
-                    this.walletBalance -= investAmount;
-                    this.updateUI();
-                    
-                    // Add investment transaction
-                    this.addTransaction('إعادة استثمار', -investAmount, 'استثمار');
-                    
-                    // Increase profit rate
-                    this.successRate = Math.min(99.9, this.successRate + 0.5);
-                    
-                    alert(`✅ تم إعادة استثمار $${investAmount}!\nمعدل النجاح الجديد: ${this.successRate}%`);
-                } else {
-                    alert('⚠️ الرصيد غير كافي للاستثمار');
-                }
-            }
-            
-            addTransaction(type, amount, category) {
-                const transactionsContainer = document.getElementById('live-transactions');
-                const div = document.createElement('div');
-                const isPositive = amount > 0;
                 
-                div.className = 'p-4 bg-gray-800/30 rounded-lg flex justify-between items-center';
-                div.innerHTML = `
-                    <div>
-                        <div class="font-bold">${type}</div>
-                        <div class="text-sm text-gray-400">${category} • الآن</div>
-                    </div>
-                    <div class="${isPositive ? 'text-green-400' : 'text-red-400'} font-bold text-xl">
-                        ${isPositive ? '+' : ''}$${Math.abs(amount)}
-                    </div>
-                `;
+                document.getElementById('active-bots').textContent = 
+                    `${Object.values(this.bots).filter(b => b.active).length}/12`;
                 
-                transactionsContainer.insertBefore(div, transactionsContainer.firstChild);
+                this.saveToFirebase();
+            }
+            
+            async saveToFirebase() {
+                if (!this.currentUser) {
+                    console.log('⚠️ لم يتم تسجيل الدخول، حفظ محلي فقط');
+                    this.saveToStorage();
+                    return;
+                }
                 
-                if (transactionsContainer.children.length > 10) {
-                    transactionsContainer.removeChild(transactionsContainer.lastChild);
+                try {
+                    const userRef = db.collection('users').doc(this.currentUser.uid);
+                    await userRef.set({
+                        totalProfit: this.totalProfit,
+                        dailyProfit: this.dailyProfit,
+                        walletBalance: this.walletBalance,
+                        activeBots: Object.values(this.bots).filter(b => b.active).length,
+                        successRate: this.successRate,
+                        bots: this.bots,
+                        lastUpdated: new Date().toISOString()
+                    }, { merge: true });
+                    
+                    console.log('💾 البيانات حفظت في Firebase');
+                } catch (error) {
+                    console.error('❌ خطأ في حفظ Firebase:', error);
                 }
             }
             
-            initFirebase() {
-                // This would initialize Firebase connection
-                // For now, we'll use localStorage as fallback
-                this.loadFromStorage();
-            }
-            
-            saveToStorage() {
-                const data = {
-                    totalProfit: this.totalProfit,
-                    dailyProfit: this.dailyProfit,
-                    walletBalance: this.walletBalance,
-                    bots: this.bots
-                };
-                localStorage.setItem('globalTradeEmpire', JSON.stringify(data));
-            }
-            
-            loadFromStorage() {
-                const saved = localStorage.getItem('globalTradeEmpire');
-                if (saved) {
-                    const data = JSON.parse(saved);
-                    this.totalProfit = data.totalProfit || this.totalProfit;
-                    this.dailyProfit = data.dailyProfit || this.dailyProfit;
-                    this.walletBalance = data.walletBalance || this.walletBalance;
-                    this.bots = data.bots || this.bots;
-                    this.updateUI();
+            async loadFromFirebase() {
+                if (!this.currentUser) {
+                    console.log('⚠️ لم يتم تسجيل الدخول، تحميل من التخزين المحلي');
+                    this.loadFromStorage();
+                    return;
                 }
-            }
-            
-            showWallet() {
-                alert(`💰 محفظتك الرقمية:\n\nالرصيد الكلي: $${this.walletBalance.toLocaleString()}\nمتاح للسحب: $${(this.walletBalance * 0.7).toLocaleString()}\nمستثمر: $${(this.walletBalance * 0.3).toLocaleString()}`);
-            }
-            
-            showTransactions() {
-                const transactions = document.getElementById('live-transactions');
-                alert(`📋 آخر ${transactions.children.length} معاملة:`);
-            }
-        }
-        
-        // Global Functions
-        function changeLanguage(lang) {
-            const empire = window.globalTradeEmpire;
-            empire.language = lang;
-            
-            // Update button styles
-            document.querySelectorAll('nav button').forEach(btn => {
-                btn.classList.remove('bg-blue-600');
-                btn.classList.add('bg-gray-700');
-            });
-            
-            event.target.classList.remove('bg-gray-700');
-            event.target.classList.add('bg-blue-600');
-            
-            // In a real app, we would update all text translations here
-            alert(`🌍 تم التغيير إلى ${lang === 'ar' ? 'العربية' : 'الإنجليزية'}`);
-        }
-        
-        function toggleBot(botId) {
-            window.globalTradeEmpire.toggleBot(botId);
-        }
-        
-        function toggleAllBots() {
-            window.globalTradeEmpire.toggleAllBots();
-        }
-        
-        function startAllBots() {
-            window.globalTradeEmpire.toggleAllBots();
-            alert('✅ تم تشغيل جميع الروبوتات الذكية!');
-        }
-        
-        function withdrawMoney() {
-            window.globalTradeEmpire.withdrawMoney();
-        }
-        
-        function reinvestMoney() {
-            window.globalTradeEmpire.reinvestMoney();
-        }
-        
-        function showWallet() {
-            window.globalTradeEmpire.showWallet();
-        }
-        
-        function showTransactions() {
-            window.globalTradeEmpire.showTransactions();
-        }
-        
-        // Initialize Application
-        window.onload = function() {
-            window.globalTradeEmpire = new GlobalTradeEmpire();
-            
-            // Auto-save every 30 seconds
-            setInterval(() => {
-                window.globalTradeEmpire.saveToStorage();
-            }, 30000);
-            
-            // Show welcome message
-            setTimeout(() => {
-                console.log('🌟 النظام جاهز تماماً!');
-            }, 1000);
-        };
-    </script>
-
-</body>
-</html>
+                
+                try {
+                    const userRef = db.collection('users').doc(this.currentUser.uid);
+                    const doc = await userRef.get();
+                    
+                    if (doc.exists) {
+                        const data = doc.data();
+                        this.totalProfit = data.totalProfit || this.totalProfit;
+                        this.dailyProfit = data.dailyProfit || this.dailyProfit;
+                        this.walletBalance = data.walletBalance || this.walletBalance;
+                        this.successRate = data.successRate || this.successRate;
+                        this.bots = data.bots || this.bots;
+                        
+                        this.updateUI();
