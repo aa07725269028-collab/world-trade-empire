@@ -286,17 +286,26 @@
             }
         }
         
-        function toggleLogin() {
-            const modal = document.getElementById('loginModal');
-            modal.classList.toggle('hidden');
-            
-            // تفريغ الحقول عند فتح النافذة
-            if (!modal.classList.contains('hidden')) {
-                document.getElementById('loginEmail').value = '';
-                document.getElementById('loginPassword').value = '';
-                document.getElementById('loginMessage').innerHTML = '';
-            }
-        }
+       function toggleLogin() {
+    const modal = document.getElementById('loginModal');
+    
+    // إظهار أو إخفاء النافذة
+    if (modal.classList.contains('hidden')) {
+        modal.classList.remove('hidden');
+        
+        // تفريغ الحقول عند فتح النافذة
+        document.getElementById('loginEmail').value = '';
+        document.getElementById('loginPassword').value = '';
+        document.getElementById('loginMessage').innerHTML = '';
+        
+        // التركيز على حقل الإيميل
+        setTimeout(() => {
+            document.getElementById('loginEmail').focus();
+        }, 100);
+    } else {
+        modal.classList.add('hidden');
+    }
+}
         
         function showSuccessMessage(message) {
             const msgDiv = document.createElement('div');
