@@ -233,34 +233,46 @@
             }
         }
         
-      // استبدل أزرار الدخول في النافذة بـ:
-<button onclick="loginUser()" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-bold">
-    🔓 دخول إلى حساب موجود
-</button>
-<button onclick="registerUser()" class="w-full bg-green-600 hover:bg-green-700 p-3 rounded-lg font-bold">
-    📝 إنشاء حساب جديد
-</button>
-<button onclick="testQuickLogin()" class="w-full bg-purple-600 hover:bg-purple-700 p-3 rounded-lg font-bold">
-    ⚡ تسجيل سريع للاختبار
-</button>
-
-// أضف هذه الدالة:
-async function testQuickLogin() {
+    async function loginUser() {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    
+    if (!email || !password) {
+        showErrorMessage("⚠️ الرجاء إدخال البريد الإلكتروني وكلمة المرور");
+        return;
+    }
+    
     try {
-        // حاول تسجيل الدخول بـ test@test.com أولاً
-        const userCredential = await auth.signInWithEmailAndPassword('test@test.com', 'test123');
-        showSuccessMessage("✅ تم تسجيل الدخول بالحساب التجريبي!");
+        // أولاً: حاول تسجيل الدخول
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        showSuccessMessage("✅ تم تسجيل الدخول بنجاح!");
         toggleLogin();
     } catch (error) {
-        // إذا فشل، أنشئ الحساب
-        try {
-            const userCredential = await auth.createUserWithEmailAndPassword('test@test.com', 'test123');
-            showSuccessMessage("🎉 تم إنشاء حساب تجريبي!");
-            toggleLogin();
-        } catch (createError) {
-            showErrorMessage("❌ خطأ: " + createError.message);
+        // إذا فشل تسجيل الدخول، قد يكون الحساب غير موجود
+        console.log("❌ خطأ في تسجيل الدخول:", error.code);
+        
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+            // إظهار رسالة توضيحية
+            document.getElementById('loginMessage').innerHTML = 
+                '👤 الحساب غير موجود. هل تريد <button onclick="switchToRegister()" class="text-blue-400 underline">إنشاء حساب جديد</button>؟';
+        } else {
+            showErrorMessage("❌ خطأ: " + error.message);
         }
     }
+}
+
+// دالة جديدة للتبديل إلى التسجيل
+function switchToRegister() {
+    document.getElementById('loginMessage').innerHTML = '📝 أدخل بياناتك لإنشاء حساب جديد';
+    setTimeout(() => {
+        // تغيير زر الدخول إلى تسجيل
+        const loginBtn = document.querySelector('#loginModal button[onclick="loginUser()"]');
+        if (loginBtn) {
+            loginBtn.onclick = registerUser;
+            loginBtn.innerHTML = '📝 إنشاء حساب جديد';
+            loginBtn.className = 'w-full bg-green-600 hover:bg-green-700 p-3 rounded-lg font-bold';
+        }
+    }, 100);
 }
         
         async function registerUser() {
