@@ -233,24 +233,47 @@
             }
         }
         
-        async function loginUser() {
-            const email = document.getElementById('loginEmail').value;
-            const password = document.getElementById('loginPassword').value;
-            
-            if (!email || !password) {
-                showErrorMessage("⚠️ الرجاء إدخال البريد الإلكتروني وكلمة المرور");
-                return;
-            }
-            
-            try {
-                const userCredential = await auth.signInWithEmailAndPassword(email, password);
-                showSuccessMessage("✅ تم تسجيل الدخول بنجاح!");
-                toggleLogin();
-            } catch (error) {
-                console.error("❌ خطأ في تسجيل الدخول:", error);
-                showErrorMessage("❌ خطأ: " + error.message);
-            }
+       async function loginUser() {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    
+    if (!email || !password) {
+        showErrorMessage("⚠️ الرجاء إدخال البريد الإلكتروني وكلمة المرور");
+        return;
+    }
+    
+    try {
+        // أولاً: حاول تسجيل الدخول
+        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        showSuccessMessage("✅ تم تسجيل الدخول بنجاح!");
+        toggleLogin();
+    } catch (error) {
+        // إذا فشل تسجيل الدخول، قد يكون الحساب غير موجود
+        console.log("❌ خطأ في تسجيل الدخول:", error.code);
+        
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+            // إظهار رسالة توضيحية
+            document.getElementById('loginMessage').innerHTML = 
+                '👤 الحساب غير موجود. هل تريد <button onclick="switchToRegister()" class="text-blue-400 underline">إنشاء حساب جديد</button>؟';
+        } else {
+            showErrorMessage("❌ خطأ: " + error.message);
         }
+    }
+}
+
+// دالة جديدة للتبديل إلى التسجيل
+function switchToRegister() {
+    document.getElementById('loginMessage').innerHTML = '📝 أدخل بياناتك لإنشاء حساب جديد';
+    setTimeout(() => {
+        // تغيير زر الدخول إلى تسجيل
+        const loginBtn = document.querySelector('#loginModal button[onclick="loginUser()"]');
+        if (loginBtn) {
+            loginBtn.onclick = registerUser;
+            loginBtn.innerHTML = '📝 إنشاء حساب جديد';
+            loginBtn.className = 'w-full bg-green-600 hover:bg-green-700 p-3 rounded-lg font-bold';
+        }
+    }, 100);
+}
         
         async function registerUser() {
             const email = document.getElementById('loginEmail').value;
