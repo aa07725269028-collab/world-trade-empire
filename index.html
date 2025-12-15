@@ -11,7 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS CDN (سيتم استبداله لاحقاً) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
@@ -26,6 +26,7 @@
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             min-height: 100vh;
             color: #f1f5f9;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
         
         .glass-card {
@@ -33,6 +34,12 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .glass-card:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
         }
         
         .profit-badge {
@@ -64,6 +71,36 @@
                 transform: translateY(0);
             }
         }
+        
+        .success-message {
+            animation: fadeInOut 3s ease-in-out;
+        }
+        
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px); }
+            20% { opacity: 1; transform: translateY(0); }
+            80% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(20px); }
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
     </style>
 </head>
 <body class="font-sans">
@@ -89,16 +126,55 @@
         
         console.log("✅ Firebase connected successfully!");
         
+        // 🔧 إدارة حالة المصادقة
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                console.log("✅ المستخدم مسجل:", user.email);
+                updateLoginButton(user.email);
+                
+                // تحميل البيانات بعد تأكيد تسجيل الدخول
+                setTimeout(() => {
+                    initializeFirestoreData(user);
+                }, 500);
+            } else {
+                console.log("⚠️ لم يتم تسجيل الدخول بعد");
+                updateLoginButton(null);
+                
+                // استخدام البيانات المحلية
+                loadLocalData();
+            }
+        });
+        
+        function updateLoginButton(email) {
+            const loginBtn = document.getElementById('loginBtn');
+            if (email) {
+                loginBtn.innerHTML = '👤 ' + email.substring(0, 10) + '...';
+                loginBtn.onclick = () => logoutUser();
+                loginBtn.className = 'px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 transition';
+            } else {
+                loginBtn.innerHTML = '🔐 تسجيل الدخول';
+                loginBtn.onclick = () => toggleLogin();
+                loginBtn.className = 'px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition';
+            }
+        }
+        
         // Initialize Firestore data structure
-        async function initializeFirestoreData() {
+        async function initializeFirestoreData(user) {
             try {
-                const userId = auth.currentUser ? auth.currentUser.uid : 'guest';
+                if (!user) {
+                    console.log("⏳ لم يتم تسجيل الدخول، استخدام بيانات محلية");
+                    return;
+                }
+                
+                const userId = user.uid;
                 const userRef = db.collection('users').doc(userId);
+                
+                console.log("📥 جاري تحميل بيانات المستخدم:", user.email);
                 
                 const snapshot = await userRef.get();
                 if (!snapshot.exists) {
-                    // Create initial data structure
-                    await userRef.set({
+                    // إنشاء بيانات أولية للمستخدم الجديد
+                    const initialData = {
                         totalProfit: 18542,
                         dailyProfit: 847,
                         walletBalance: 12542,
@@ -111,63 +187,193 @@
                             crypto: { active: true, profit: 156, type: 'عملات' }
                         },
                         transactions: [],
-                        lastUpdated: new Date().toISOString()
-                    });
-                    console.log("📊 Created initial Firestore data");
+                        created: new Date().toISOString(),
+                        lastUpdated: new Date().toISOString(),
+                        email: user.email
+                    };
+                    
+                    await userRef.set(initialData);
+                    console.log("📊 تم إنشاء بيانات جديدة في Firebase");
+                    
+                    // تحديث التطبيق بالبيانات الجديدة
+                    if (window.globalTradeEmpire) {
+                        window.globalTradeEmpire.loadData(initialData);
+                    }
+                } else {
+                    // تحميل البيانات الموجودة
+                    const data = snapshot.data();
+                    console.log("📤 تم تحميل البيانات من Firebase");
+                    
+                    // تحديث التطبيق بالبيانات المحملة
+                    if (window.globalTradeEmpire) {
+                        window.globalTradeEmpire.loadData(data);
+                    }
                 }
+                
+                showSuccessMessage("✅ تم تحميل البيانات من السحابة");
             } catch (error) {
-                console.error("Error initializing Firestore:", error);
+                console.error("❌ خطأ في تحميل البيانات:", error);
+                
+                if (error.code === 'permission-denied') {
+                    console.error("🔒 خطأ في الأذونات! تأكد من قواعد Firebase.");
+                    showErrorMessage("⚠️ هناك مشكلة في الأذونات. سيتم استخدام التخزين المحلي مؤقتاً.");
+                    
+                    // استخدام البيانات المحلية كبديل
+                    loadLocalData();
+                }
             }
         }
         
-        // Initialize on load
-        document.addEventListener('DOMContentLoaded', initializeFirestoreData);
+        async function loadLocalData() {
+            const saved = localStorage.getItem('globalTradeEmpire');
+            if (saved && window.globalTradeEmpire) {
+                const data = JSON.parse(saved);
+                window.globalTradeEmpire.loadData(data);
+                console.log("📂 تم تحميل البيانات من التخزين المحلي");
+            }
+        }
+        
+        async function loginUser() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!email || !password) {
+                showErrorMessage("⚠️ الرجاء إدخال البريد الإلكتروني وكلمة المرور");
+                return;
+            }
+            
+            try {
+                const userCredential = await auth.signInWithEmailAndPassword(email, password);
+                showSuccessMessage("✅ تم تسجيل الدخول بنجاح!");
+                toggleLogin();
+            } catch (error) {
+                console.error("❌ خطأ في تسجيل الدخول:", error);
+                showErrorMessage("❌ خطأ: " + error.message);
+            }
+        }
+        
+        async function registerUser() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!email || !password) {
+                showErrorMessage("⚠️ الرجاء إدخال البريد الإلكتروني وكلمة المرور");
+                return;
+            }
+            
+            if (password.length < 6) {
+                showErrorMessage("⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل");
+                return;
+            }
+            
+            try {
+                const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+                showSuccessMessage("🎉 تم إنشاء الحساب بنجاح! البيانات تم حفظها في السحابة.");
+                toggleLogin();
+            } catch (error) {
+                console.error("❌ خطأ في إنشاء الحساب:", error);
+                showErrorMessage("❌ خطأ: " + error.message);
+            }
+        }
+        
+        async function logoutUser() {
+            try {
+                await auth.signOut();
+                showSuccessMessage("✅ تم تسجيل الخروج بنجاح");
+            } catch (error) {
+                console.error("❌ خطأ في تسجيل الخروج:", error);
+                showErrorMessage("❌ خطأ في تسجيل الخروج");
+            }
+        }
+        
+        function toggleLogin() {
+            const modal = document.getElementById('loginModal');
+            modal.classList.toggle('hidden');
+            
+            // تفريغ الحقول عند فتح النافذة
+            if (!modal.classList.contains('hidden')) {
+                document.getElementById('loginEmail').value = '';
+                document.getElementById('loginPassword').value = '';
+                document.getElementById('loginMessage').innerHTML = '';
+            }
+        }
+        
+        function showSuccessMessage(message) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'fixed bottom-4 right-4 bg-green-600 text-white p-4 rounded-lg shadow-lg z-50 success-message';
+            msgDiv.innerHTML = '🎯 ' + message;
+            document.body.appendChild(msgDiv);
+            setTimeout(() => msgDiv.remove(), 3000);
+        }
+        
+        function showErrorMessage(message) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'fixed bottom-4 right-4 bg-red-600 text-white p-4 rounded-lg shadow-lg z-50 success-message';
+            msgDiv.innerHTML = '⚠️ ' + message;
+            document.body.appendChild(msgDiv);
+            setTimeout(() => msgDiv.remove(), 3000);
+        }
+        
+        // تهيئة التطبيق عند تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', () => {
+            // عرض تلميح تسجيل الدخول بعد 5 ثواني
+            setTimeout(() => {
+                if (!auth.currentUser && !localStorage.getItem('loginHintShown')) {
+                    showSuccessMessage("💡 تلميح: سجل دخول لحفظ بياناتك في السحابة بشكل دائم!");
+                    localStorage.setItem('loginHintShown', 'true');
+                }
+            }, 5000);
+        });
     </script>
 
     <!-- Navigation -->
-    <nav class="glass-card fixed top-0 left-0 right-0 z-50 p-4 mx-4 mt-2">
+    <nav class="glass-card fixed top-0 left-0 right-0 z-40 p-4 mx-4 mt-2">
         <div class="container mx-auto flex justify-between items-center">
             <div class="flex items-center space-x-3 space-x-reverse">
-                <div class="text-3xl">🚀</div>
+                <div class="text-3xl animate-pulse">🚀</div>
                 <div>
-                    <h1 class="text-xl font-bold">إمبراطورية التجارة العالمية</h1>
-                    <p class="text-sm text-gray-400">نظام ذكي متكامل 24/7</p>
+                    <h1 class="text-xl font-bold text-white">إمبراطورية التجارة العالمية</h1>
+                    <p class="text-sm text-gray-300">نظام ذكي متكامل 24/7</p>
                 </div>
             </div>
             
             <div class="flex space-x-2 space-x-reverse">
-                <button id="loginBtn" onclick="toggleLogin()" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition">
+                <button id="loginBtn" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition duration-300">
                     🔐 تسجيل الدخول
                 </button>
-                <button onclick="changeLanguage('ar')" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition">العربية</button>
-                <button onclick="changeLanguage('en')" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition">English</button>
-                <button onclick="showWallet()" class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 transition">💰 المحفظة</button>
-                <button onclick="startAllBots()" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition">▶️ تشغيل الكل</button>
+                <button onclick="changeLanguage('ar')" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 transition duration-300">العربية</button>
+                <button onclick="changeLanguage('en')" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition duration-300">English</button>
+                <button onclick="showWallet()" class="px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 transition duration-300">💰 المحفظة</button>
+                <button onclick="startAllBots()" class="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 transition duration-300">▶️ تشغيل الكل</button>
             </div>
         </div>
     </nav>
 
     <!-- Login Modal -->
-    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden">
-        <div class="flex items-center justify-center min-h-screen">
-            <div class="glass-card p-8 w-96">
-                <h2 class="text-2xl font-bold mb-6 text-center">🔐 تسجيل الدخول</h2>
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-70 z-50 hidden transition-opacity duration-300">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="glass-card p-8 w-full max-w-md transform transition-all duration-300 scale-100">
+                <h2 class="text-2xl font-bold mb-6 text-center text-white">🔐 تسجيل الدخول</h2>
                 <div class="space-y-4">
                     <input id="loginEmail" type="email" placeholder="البريد الإلكتروني" 
-                           class="w-full p-3 bg-gray-800 rounded-lg">
+                           class="w-full p-3 bg-gray-800 rounded-lg text-white border border-gray-700 focus:border-blue-500 focus:outline-none">
                     <input id="loginPassword" type="password" placeholder="كلمة المرور" 
-                           class="w-full p-3 bg-gray-800 rounded-lg">
-                    <button onclick="loginUser()" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-bold">
-                        دخول
+                           class="w-full p-3 bg-gray-800 rounded-lg text-white border border-gray-700 focus:border-blue-500 focus:outline-none">
+                    <button onclick="loginUser()" class="w-full bg-blue-600 hover:bg-blue-700 p-3 rounded-lg font-bold transition duration-300 transform hover:scale-[1.02]">
+                        🚀 دخول
                     </button>
-                    <button onclick="registerUser()" class="w-full bg-green-600 hover:bg-green-700 p-3 rounded-lg font-bold">
-                        إنشاء حساب جديد
+                    <button onclick="registerUser()" class="w-full bg-green-600 hover:bg-green-700 p-3 rounded-lg font-bold transition duration-300 transform hover:scale-[1.02]">
+                        📝 إنشاء حساب جديد
                     </button>
-                    <button onclick="toggleLogin()" class="w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg font-bold">
-                        إلغاء
+                    <button onclick="toggleLogin()" class="w-full bg-gray-700 hover:bg-gray-600 p-3 rounded-lg font-bold transition duration-300">
+                        ✖️ إلغاء
                     </button>
                 </div>
-                <div id="loginMessage" class="mt-4 text-center text-sm"></div>
+                <div id="loginMessage" class="mt-4 text-center text-sm text-gray-300"></div>
+                <p class="mt-6 text-xs text-gray-400 text-center">
+                    🔒 البيانات تحفظ بشكل آمن في Firebase سحابياً<br>
+                    💾 بدون تسجيل دخول: البيانات تحفظ محلياً فقط
+                </p>
             </div>
         </div>
     </div>
@@ -178,161 +384,182 @@
         <!-- Stats Overview -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <!-- Total Profit -->
-            <div class="glass-card p-6">
+            <div class="glass-card p-6 transform transition-all duration-300 hover:scale-[1.02]">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-gray-400">إجمالي الأرباح</p>
-                        <p id="total-profit" class="text-3xl font-bold mt-2">$18,542</p>
+                        <p class="text-gray-300">إجمالي الأرباح</p>
+                        <p id="total-profit" class="text-3xl font-bold mt-2 text-white">$18,542</p>
                     </div>
-                    <div class="text-2xl">💰</div>
+                    <div class="text-2xl animate-pulse">💰</div>
                 </div>
                 <div class="mt-4 text-green-400 flex items-center">
-                    <span>📈 +4.2%</span>
-                    <span class="mr-2">هذا اليوم</span>
+                    <span class="animate-pulse">📈</span>
+                    <span class="mr-2">+4.2% هذا اليوم</span>
                 </div>
             </div>
             
             <!-- Active Bots -->
-            <div class="glass-card p-6">
+            <div class="glass-card p-6 transform transition-all duration-300 hover:scale-[1.02]">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-gray-400">الروبوتات النشطة</p>
-                        <p id="active-bots" class="text-3xl font-bold mt-2">12/12</p>
+                        <p class="text-gray-300">الروبوتات النشطة</p>
+                        <p id="active-bots" class="text-3xl font-bold mt-2 text-white">12/12</p>
                     </div>
                     <div class="text-2xl">🤖</div>
                 </div>
-                <div class="mt-4 text-blue-400">⚡ جميع الأنظمة تعمل</div>
+                <div class="mt-4 text-blue-400 flex items-center">
+                    <span class="animate-pulse">⚡</span>
+                    <span class="mr-2">جميع الأنظمة تعمل</span>
+                </div>
             </div>
             
             <!-- Success Rate -->
-            <div class="glass-card p-6">
+            <div class="glass-card p-6 transform transition-all duration-300 hover:scale-[1.02]">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-gray-400">معدل النجاح</p>
-                        <p id="success-rate" class="text-3xl font-bold mt-2">96.7%</p>
+                        <p class="text-gray-300">معدل النجاح</p>
+                        <p id="success-rate" class="text-3xl font-bold mt-2 text-white">96.7%</p>
                     </div>
                     <div class="text-2xl">🎯</div>
                 </div>
-                <div class="mt-4 text-yellow-400">⭐ أداء استثنائي</div>
+                <div class="mt-4 text-yellow-400 flex items-center">
+                    <span>⭐</span>
+                    <span class="mr-2">أداء استثنائي</span>
+                </div>
             </div>
             
             <!-- Daily Profit -->
-            <div class="glass-card p-6">
+            <div class="glass-card p-6 transform transition-all duration-300 hover:scale-[1.02]">
                 <div class="flex justify-between items-start">
                     <div>
-                        <p class="text-gray-400">أرباح اليوم</p>
-                        <p id="daily-profit" class="text-3xl font-bold mt-2">$847</p>
+                        <p class="text-gray-300">أرباح اليوم</p>
+                        <p id="daily-profit" class="text-3xl font-bold mt-2 text-white">$847</p>
                     </div>
                     <div class="text-2xl">💹</div>
                 </div>
-                <div class="mt-4 text-green-400">🔥 +$347 خلال ساعة</div>
+                <div class="mt-4 text-green-400 flex items-center">
+                    <span class="animate-pulse">🔥</span>
+                    <span class="mr-2">+$347 خلال ساعة</span>
+                </div>
             </div>
         </div>
         
         <!-- Advanced Trading Bots -->
-        <div class="glass-card p-6 mb-8">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold">🤖 الروبوتات المتقدمة</h2>
+        <div class="glass-card p-6 mb-8 transform transition-all duration-300">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-6 space-y-4 md:space-y-0">
+                <h2 class="text-2xl font-bold text-white">🤖 الروبوتات المتقدمة</h2>
                 <div class="flex space-x-2 space-x-reverse">
-                    <button onclick="toggleAllBots()" class="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600">تشغيل/إيقاف الكل</button>
-                    <button onclick="saveToFirebase()" class="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700">💾 حفظ البيانات</button>
+                    <button onclick="toggleAllBots()" class="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition duration-300">
+                        🔄 تشغيل/إيقاف الكل
+                    </button>
+                    <button onclick="saveData()" class="px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 transition duration-300">
+                        💾 حفظ البيانات
+                    </button>
                 </div>
             </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 <!-- Trading Bot -->
-                <div id="bot-trading" class="glass-card p-4 robot-active">
+                <div id="bot-trading" class="glass-card p-4 robot-active transform transition-all duration-300 hover:scale-[1.03]">
                     <div class="flex items-center mb-3">
-                        <div class="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center text-xl">📈</div>
+                        <div class="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center text-xl animate-pulse">📈</div>
                         <div class="mr-3">
-                            <h3 class="font-bold">روبوت التداول الذكي</h3>
-                            <p class="text-sm text-gray-400">تداول الذهب والعملات</p>
+                            <h3 class="font-bold text-white">روبوت التداول الذكي</h3>
+                            <p class="text-sm text-gray-300">تداول الذهب والعملات</p>
                         </div>
                     </div>
                     <div class="mb-3">
                         <div class="flex justify-between text-sm mb-1">
-                            <span>الأرباح اليومية</span>
-                            <span id="trading-profit" class="text-green-400">+$324</span>
+                            <span class="text-gray-300">الأرباح اليومية</span>
+                            <span id="trading-profit" class="text-green-400 font-bold">+$324</span>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2">
-                            <div class="bg-green-500 h-2 rounded-full" style="width: 85%"></div>
+                            <div class="bg-green-500 h-2 rounded-full animate-pulse" style="width: 85%"></div>
                         </div>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm text-gray-400">🟢 نشط</span>
-                        <button onclick="toggleBot('trading')" class="text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded">إيقاف</button>
+                    <div class="flex justify-between items-center">
+                        <span id="trading-status" class="text-sm text-green-400">🟢 نشط</span>
+                        <button onclick="toggleBot('trading')" class="text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded transition duration-300">
+                            إيقاف
+                        </button>
                     </div>
                 </div>
                 
                 <!-- E-commerce Bot -->
-                <div id="bot-ecommerce" class="glass-card p-4 robot-active">
+                <div id="bot-ecommerce" class="glass-card p-4 robot-active transform transition-all duration-300 hover:scale-[1.03]">
                     <div class="flex items-center mb-3">
                         <div class="w-12 h-12 rounded-lg bg-green-500/20 flex items-center justify-center text-xl">🛒</div>
                         <div class="mr-3">
-                            <h3 class="font-bold">روبوت التجارة الإلكترونية</h3>
-                            <p class="text-sm text-gray-400">شراء من الصين بيع عالمي</p>
+                            <h3 class="font-bold text-white">روبوت التجارة الإلكترونية</h3>
+                            <p class="text-sm text-gray-300">شراء من الصين بيع عالمي</p>
                         </div>
                     </div>
                     <div class="mb-3">
                         <div class="flex justify-between text-sm mb-1">
-                            <span>الأرباح اليومية</span>
-                            <span id="ecommerce-profit" class="text-green-400">+$187</span>
+                            <span class="text-gray-300">الأرباح اليومية</span>
+                            <span id="ecommerce-profit" class="text-green-400 font-bold">+$187</span>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2">
-                            <div class="bg-green-500 h-2 rounded-full" style="width: 65%"></div>
+                            <div class="bg-green-500 h-2 rounded-full animate-pulse" style="width: 65%"></div>
                         </div>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm text-gray-400">🟢 نشط</span>
-                        <button onclick="toggleBot('ecommerce')" class="text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded">إيقاف</button>
+                    <div class="flex justify-between items-center">
+                        <span id="ecommerce-status" class="text-sm text-green-400">🟢 نشط</span>
+                        <button onclick="toggleBot('ecommerce')" class="text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded transition duration-300">
+                            إيقاف
+                        </button>
                     </div>
                 </div>
                 
                 <!-- Affiliate Bot -->
-                <div id="bot-affiliate" class="glass-card p-4 robot-active">
+                <div id="bot-affiliate" class="glass-card p-4 robot-active transform transition-all duration-300 hover:scale-[1.03]">
                     <div class="flex items-center mb-3">
                         <div class="w-12 h-12 rounded-lg bg-purple-500/20 flex items-center justify-center text-xl">👥</div>
                         <div class="mr-3">
-                            <h3 class="font-bold">روبوت التسويق بالعمولة</h3>
-                            <p class="text-sm text-gray-400">عمولات من شركاء عالميين</p>
+                            <h3 class="font-bold text-white">روبوت التسويق بالعمولة</h3>
+                            <p class="text-sm text-gray-300">عمولات من شركاء عالميين</p>
                         </div>
                     </div>
                     <div class="mb-3">
                         <div class="flex justify-between text-sm mb-1">
-                            <span>الأرباح اليومية</span>
-                            <span id="affiliate-profit" class="text-green-400">+$89</span>
+                            <span class="text-gray-300">الأرباح اليومية</span>
+                            <span id="affiliate-profit" class="text-green-400 font-bold">+$89</span>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2">
-                            <div class="bg-green-500 h-2 rounded-full" style="width: 45%"></div>
+                            <div class="bg-green-500 h-2 rounded-full animate-pulse" style="width: 45%"></div>
                         </div>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm text-gray-400">🟢 نشط</span>
-                        <button onclick="toggleBot('affiliate')" class="text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded">إيقاف</button>
+                    <div class="flex justify-between items-center">
+                        <span id="affiliate-status" class="text-sm text-green-400">🟢 نشط</span>
+                        <button onclick="toggleBot('affiliate')" class="text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded transition duration-300">
+                            إيقاف
+                        </button>
                     </div>
                 </div>
                 
                 <!-- Crypto Bot -->
-                <div id="bot-crypto" class="glass-card p-4 robot-active">
+                <div id="bot-crypto" class="glass-card p-4 robot-active transform transition-all duration-300 hover:scale-[1.03]">
                     <div class="flex items-center mb-3">
                         <div class="w-12 h-12 rounded-lg bg-yellow-500/20 flex items-center justify-center text-xl">₿</div>
                         <div class="mr-3">
-                            <h3 class="font-bold">روبوت العملات الرقمية</h3>
-                            <p class="text-sm text-gray-400">تداول البيتكوين والإيثريوم</p>
+                            <h3 class="font-bold text-white">روبوت العملات الرقمية</h3>
+                            <p class="text-sm text-gray-300">تداول البيتكوين والإيثريوم</p>
                         </div>
                     </div>
                     <div class="mb-3">
                         <div class="flex justify-between text-sm mb-1">
-                            <span>الأرباح اليومية</span>
-                            <span id="crypto-profit" class="text-green-400">+$156</span>
+                            <span class="text-gray-300">الأرباح اليومية</span>
+                            <span id="crypto-profit" class="text-green-400 font-bold">+$156</span>
                         </div>
                         <div class="w-full bg-gray-700 rounded-full h-2">
-                            <div class="bg-green-500 h-2 rounded-full" style="width: 55%"></div>
+                            <div class="bg-green-500 h-2 rounded-full animate-pulse" style="width: 55%"></div>
                         </div>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-sm text-gray-400">🟢 نشط</span>
-                        <button onclick="toggleBot('crypto')" class="text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded">إيقاف</button>
+                    <div class="flex justify-between items-center">
+                        <span id="crypto-status" class="text-sm text-green-400">🟢 نشط</span>
+                        <button onclick="toggleBot('crypto')" class="text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded transition duration-300">
+                            إيقاف
+                        </button>
                     </div>
                 </div>
             </div>
@@ -341,45 +568,45 @@
         <!-- Income Sources & Wallet -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             <!-- Income Sources -->
-            <div class="glass-card p-6 lg:col-span-2">
-                <h2 class="text-2xl font-bold mb-6">💰 مصادر الدخل المتعددة</h2>
+            <div class="glass-card p-6 lg:col-span-2 transform transition-all duration-300">
+                <h2 class="text-2xl font-bold mb-6 text-white">💰 مصادر الدخل المتعددة</h2>
                 
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto rounded-lg">
                     <table class="w-full">
-                        <thead class="bg-gray-800/50">
+                        <thead class="bg-gray-800/70">
                             <tr>
-                                <th class="p-3 text-right">المصدر</th>
-                                <th class="p-3 text-right">الإيرادات</th>
-                                <th class="p-3 text-right">النمو</th>
-                                <th class="p-3 text-right">الحالة</th>
+                                <th class="p-3 text-right text-gray-300">المصدر</th>
+                                <th class="p-3 text-right text-gray-300">الإيرادات</th>
+                                <th class="p-3 text-right text-gray-300">النمو</th>
+                                <th class="p-3 text-right text-gray-300">الحالة</th>
                             </tr>
                         </thead>
                         <tbody id="income-sources">
-                            <tr class="border-b border-gray-700/50">
+                            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30 transition duration-300">
                                 <td class="p-3">📈 تداول الذهب والعملات</td>
                                 <td class="p-3 font-bold">$5,847</td>
                                 <td class="p-3 text-green-400">+12.5%</td>
                                 <td class="p-3"><span class="bg-green-900/50 text-green-300 px-2 py-1 rounded text-sm">ممتاز</span></td>
                             </tr>
-                            <tr class="border-b border-gray-700/50">
+                            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30 transition duration-300">
                                 <td class="p-3">🛒 متجر إلكتروني آلي</td>
                                 <td class="p-3 font-bold">$3,591</td>
                                 <td class="p-3 text-green-400">+8.3%</td>
                                 <td class="p-3"><span class="bg-green-900/50 text-green-300 px-2 py-1 rounded text-sm">جيد</span></td>
                             </tr>
-                            <tr class="border-b border-gray-700/50">
+                            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30 transition duration-300">
                                 <td class="p-3">🤝 وساطة تجارية</td>
                                 <td class="p-3 font-bold">$2,874</td>
                                 <td class="p-3 text-green-400">+15.2%</td>
                                 <td class="p-3"><span class="bg-green-900/50 text-green-300 px-2 py-1 rounded text-sm">ممتاز</span></td>
                             </tr>
-                            <tr class="border-b border-gray-700/50">
+                            <tr class="border-b border-gray-700/50 hover:bg-gray-800/30 transition duration-300">
                                 <td class="p-3">🌐 تسويق رقمي</td>
                                 <td class="p-3 font-bold">$1,845</td>
                                 <td class="p-3 text-green-400">+5.7%</td>
                                 <td class="p-3"><span class="bg-yellow-900/50 text-yellow-300 px-2 py-1 rounded text-sm">متوسط</span></td>
                             </tr>
-                            <tr>
+                            <tr class="hover:bg-gray-800/30 transition duration-300">
                                 <td class="p-3">💼 استثمارات ذكية</td>
                                 <td class="p-3 font-bold">$4,385</td>
                                 <td class="p-3 text-green-400">+9.8%</td>
@@ -391,58 +618,70 @@
             </div>
             
             <!-- Digital Wallet -->
-            <div class="glass-card p-6">
-                <h2 class="text-2xl font-bold mb-6">💼 المحفظة الرقمية</h2>
+            <div class="glass-card p-6 transform transition-all duration-300 hover:scale-[1.02]">
+                <h2 class="text-2xl font-bold mb-6 text-white">💼 المحفظة الرقمية</h2>
                 
                 <div class="space-y-4">
-                    <div class="flex justify-between items-center p-4 bg-gray-800/30 rounded-lg">
-                        <span>الرصيد الكلي</span>
-                        <span id="wallet-balance" class="text-2xl font-bold">$12,542</span>
+                    <div class="flex justify-between items-center p-4 bg-gray-800/30 rounded-lg hover:bg-gray-800/40 transition duration-300">
+                        <span class="text-gray-300">الرصيد الكلي</span>
+                        <span id="wallet-balance" class="text-2xl font-bold text-white">$12,542</span>
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="p-3 bg-gray-800/30 rounded-lg text-center">
-                            <div class="text-sm text-gray-400">متاح للسحب</div>
-                            <div class="text-xl font-bold">$8,152</div>
+                        <div class="p-3 bg-gray-800/30 rounded-lg text-center hover:bg-gray-800/40 transition duration-300">
+                            <div class="text-sm text-gray-300">متاح للسحب</div>
+                            <div class="text-xl font-bold text-white">$8,152</div>
                         </div>
-                        <div class="p-3 bg-gray-800/30 rounded-lg text-center">
-                            <div class="text-sm text-gray-400">مستثمر</div>
-                            <div class="text-xl font-bold">$4,390</div>
+                        <div class="p-3 bg-gray-800/30 rounded-lg text-center hover:bg-gray-800/40 transition duration-300">
+                            <div class="text-sm text-gray-300">مستثمر</div>
+                            <div class="text-xl font-bold text-white">$4,390</div>
                         </div>
                     </div>
                     
                     <div class="space-y-3">
-                        <button onclick="withdrawMoney()" class="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold transition">
+                        <button onclick="withdrawMoney()" class="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-lg font-bold transition duration-300 transform hover:scale-[1.02]">
                             🏦 سحب الأرباح
                         </button>
-                        <button onclick="reinvestMoney()" class="w-full bg-green-600 hover:bg-green-700 py-3 rounded-lg font-bold transition">
+                        <button onclick="reinvestMoney()" class="w-full bg-green-600 hover:bg-green-700 py-3 rounded-lg font-bold transition duration-300 transform hover:scale-[1.02]">
                             🔄 إعادة استثمار
                         </button>
-                        <button onclick="showTransactions()" class="w-full bg-purple-600 hover:bg-purple-700 py-3 rounded-lg font-bold transition">
+                        <button onclick="showTransactions()" class="w-full bg-purple-600 hover:bg-purple-700 py-3 rounded-lg font-bold transition duration-300 transform hover:scale-[1.02]">
                             📋 عرض المعاملات
                         </button>
+                    </div>
+                    
+                    <div class="pt-4 border-t border-gray-700/50">
+                        <p class="text-xs text-gray-400 text-center">
+                            💡 <span id="save-status">يتم الحفظ تلقائياً كل 30 ثانية</span>
+                        </p>
                     </div>
                 </div>
             </div>
         </div>
         
         <!-- Real-time Transactions -->
-        <div class="glass-card p-6">
-            <h2 class="text-2xl font-bold mb-6">⚡ المعاملات الحية</h2>
+        <div class="glass-card p-6 transform transition-all duration-300">
+            <h2 class="text-2xl font-bold mb-6 text-white">⚡ المعاملات الحية</h2>
             
-            <div id="live-transactions" class="space-y-3 max-h-96 overflow-y-auto">
+            <div id="live-transactions" class="space-y-3 max-h-96 overflow-y-auto pr-2">
                 <!-- Transactions will be added here by JavaScript -->
             </div>
         </div>
     </div>
 
     <!-- Footer -->
-    <footer class="glass-card mx-4 mb-4 p-6 text-center text-gray-400">
-        <p class="text-lg">🚀 إمبراطورية التجارة العالمية - نظام ذكي متكامل</p>
+    <footer class="glass-card mx-4 mb-4 p-6 text-center text-gray-300 transform transition-all duration-300">
+        <p class="text-lg text-white">🚀 إمبراطورية التجارة العالمية - نظام ذكي متكامل</p>
         <p class="mt-2">⚡ يعمل على GitHub + Netlify + Firebase</p>
         <p class="mt-4 text-sm">🇨🇳 🤝 🇮🇶 من الصين إلى العراق بأعلى درجات الكفاءة</p>
         <p class="mt-2 text-sm">© 2024 - جميع الأنظمة تعمل تلقائياً 24/7</p>
-        <p class="mt-4 text-xs text-green-400">✅ Firebase متصل بنجاح | Project ID: global-trade-empire-6c2d9</p>
+        <p class="mt-4 text-xs text-green-400 animate-pulse">
+            ✅ Firebase متصل بنجاح | Project ID: global-trade-empire-6c2d9
+        </p>
+        <p id="connection-status" class="mt-2 text-xs">
+            <span id="firebase-status" class="text-green-400">● Firebase: متصل</span> | 
+            <span id="storage-status" class="text-blue-400">● التخزين: نشط</span>
+        </p>
     </footer>
 
     <!-- JavaScript Application -->
@@ -458,303 +697,4 @@
                 this.language = 'ar';
                 this.bots = {};
                 this.currentUser = null;
-                
-                this.init();
-            }
-            
-            async init() {
-                console.log('🚀 إمبراطورية التجارة العالمية تعمل الآن!');
-                
-                // Initialize all bots
-                this.initializeBots();
-                
-                // Check Firebase auth state
-                this.checkAuthState();
-                
-                // Start auto profit updates
-                this.startAutoTrading();
-                
-                // Generate initial transactions
-                this.generateTransactions();
-                
-                // Load data from Firebase
-                await this.loadFromFirebase();
-            }
-            
-            checkAuthState() {
-                auth.onAuthStateChanged((user) => {
-                    if (user) {
-                        this.currentUser = user;
-                        document.getElementById('loginBtn').innerHTML = '👤 ' + user.email.substring(0, 10) + '...';
-                        console.log('✅ User logged in:', user.email);
-                    } else {
-                        this.currentUser = null;
-                        document.getElementById('loginBtn').innerHTML = '🔐 تسجيل الدخول';
-                    }
-                });
-            }
-            
-            async login(email, password) {
-                try {
-                    const userCredential = await auth.signInWithEmailAndPassword(email, password);
-                    this.currentUser = userCredential.user;
-                    alert('✅ تم تسجيل الدخول بنجاح!');
-                    await this.loadFromFirebase();
-                    toggleLogin();
-                    return true;
-                } catch (error) {
-                    alert('❌ خطأ في تسجيل الدخول: ' + error.message);
-                    return false;
-                }
-            }
-            
-            async register(email, password) {
-                try {
-                    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-                    this.currentUser = userCredential.user;
-                    alert('✅ تم إنشاء الحساب بنجاح!');
-                    await this.saveToFirebase(); // Save initial data
-                    toggleLogin();
-                    return true;
-                } catch (error) {
-                    alert('❌ خطأ في إنشاء الحساب: ' + error.message);
-                    return false;
-                }
-            }
-            
-            initializeBots() {
-                this.bots = {
-                    trading: { active: true, profit: 324, type: 'تداول' },
-                    ecommerce: { active: true, profit: 187, type: 'تجارة' },
-                    affiliate: { active: true, profit: 89, type: 'تسويق' },
-                    crypto: { active: true, profit: 156, type: 'عملات' },
-                    realestate: { active: true, profit: 120, type: 'عقارات' },
-                    data: { active: true, profit: 75, type: 'بيانات' },
-                    digital: { active: true, profit: 95, type: 'خدمات' },
-                    stocks: { active: true, profit: 210, type: 'أسهم' },
-                    rental: { active: true, profit: 65, type: 'تأجير' },
-                    broker: { active: true, profit: 180, type: 'وساطة' },
-                    analyst: { active: true, profit: 0, type: 'تحليل' },
-                    security: { active: true, profit: 0, type: 'أمان' }
-                };
-            }
-            
-            startAutoTrading() {
-                // Auto profit generation every 5 seconds
-                setInterval(() => {
-                    this.generateProfit();
-                    this.updateUI();
-                }, 5000);
-                
-                // Auto transactions every 10 seconds
-                setInterval(() => {
-                    this.addLiveTransaction();
-                }, 10000);
-                
-                // Auto save to Firebase every 30 seconds
-                setInterval(() => {
-                    if (this.currentUser) {
-                        this.saveToFirebase();
-                    }
-                }, 30000);
-            }
-            
-            generateProfit() {
-                let newProfit = 0;
-                
-                // Calculate profit from active bots
-                Object.values(this.bots).forEach(bot => {
-                    if (bot.active && bot.profit > 0) {
-                        const randomIncrease = Math.floor(Math.random() * 15) + 5;
-                        newProfit += randomIncrease;
-                        bot.profit += randomIncrease;
-                    }
-                });
-                
-                this.dailyProfit += newProfit;
-                this.totalProfit += newProfit;
-                this.walletBalance += newProfit;
-                
-                // Update bot profit displays
-                this.updateBotDisplays();
-                
-                return newProfit;
-            }
-            
-            updateBotDisplays() {
-                document.getElementById('trading-profit').textContent = `+$${this.bots.trading.profit}`;
-                document.getElementById('ecommerce-profit').textContent = `+$${this.bots.ecommerce.profit}`;
-                document.getElementById('affiliate-profit').textContent = `+$${this.bots.affiliate.profit}`;
-                document.getElementById('crypto-profit').textContent = `+$${this.bots.crypto.profit}`;
-            }
-            
-            updateUI() {
-                document.getElementById('total-profit').textContent = `$${this.totalProfit.toLocaleString()}`;
-                document.getElementById('daily-profit').textContent = `$${this.dailyProfit.toLocaleString()}`;
-                document.getElementById('wallet-balance').textContent = `$${this.walletBalance.toLocaleString()}`;
-                document.getElementById('active-bots').textContent = `${Object.values(this.bots).filter(b => b.active).length}/12`;
-                document.getElementById('success-rate').textContent = `${this.successRate.toFixed(1)}%`;
-            }
-            
-            generateTransactions() {
-                const transactionsContainer = document.getElementById('live-transactions');
-                const transactions = [
-                    { type: 'تداول ذهب', amount: 124, time: 'الآن' },
-                    { type: 'بيع منتج', amount: 87, time: 'منذ 5 دقائق' },
-                    { type: 'عمولة وساطة', amount: 245, time: 'منذ 18 دقيقة' },
-                    { type: 'تسويق رقمي', amount: 63, time: 'منذ ساعة' },
-                    { type: 'استثمار عقاري', amount: 180, time: 'منذ ساعتين' }
-                ];
-                
-                transactions.forEach(transaction => {
-                    this.addTransactionElement(transaction.type, transaction.amount, transaction.time);
-                });
-            }
-            
-            addLiveTransaction() {
-                const types = ['تداول آلي', 'عمولة تجارية', 'ربح استثماري', 'بيع منتج', 'خدمة رقمية'];
-                const type = types[Math.floor(Math.random() * types.length)];
-                const amount = Math.floor(Math.random() * 200) + 50;
-                const time = 'الآن';
-                
-                this.addTransactionElement(type, amount, time);
-                
-                // Add to profits
-                this.dailyProfit += amount;
-                this.totalProfit += amount;
-                this.walletBalance += amount;
-                this.updateUI();
-                
-                // Save to Firebase realtime
-                if (this.currentUser) {
-                    realtimeDb.ref('transactions/' + Date.now()).set({
-                        type: type,
-                        amount: amount,
-                        time: time,
-                        userId: this.currentUser.uid
-                    });
-                }
-            }
-            
-            addTransactionElement(type, amount, time) {
-                const transactionsContainer = document.getElementById('live-transactions');
-                const div = document.createElement('div');
-                div.className = 'p-4 bg-gray-800/30 rounded-lg flex justify-between items-center transaction-animation';
-                div.innerHTML = `
-                    <div>
-                        <div class="font-bold">${type}</div>
-                        <div class="text-sm text-gray-400">${time}</div>
-                    </div>
-                    <div class="text-green-400 font-bold text-xl">+$${amount}</div>
-                `;
-                
-                // Add to beginning
-                transactionsContainer.insertBefore(div, transactionsContainer.firstChild);
-                
-                // Limit to 10 transactions
-                if (transactionsContainer.children.length > 10) {
-                    transactionsContainer.removeChild(transactionsContainer.lastChild);
-                }
-            }
-            
-            toggleBot(botId) {
-                if (this.bots[botId]) {
-                    this.bots[botId].active = !this.bots[botId].active;
-                    const botElement = document.getElementById(`bot-${botId}`);
-                    const button = botElement.querySelector('button');
-                    
-                    if (this.bots[botId].active) {
-                        botElement.classList.add('robot-active');
-                        botElement.querySelector('.text-gray-400').textContent = '🟢 نشط';
-                        button.textContent = 'إيقاف';
-                        button.className = 'text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded';
-                    } else {
-                        botElement.classList.remove('robot-active');
-                        botElement.querySelector('.text-gray-400').textContent = '🔴 متوقف';
-                        button.textContent = 'تشغيل';
-                        button.className = 'text-sm bg-green-500 hover:bg-green-600 px-3 py-1 rounded';
-                    }
-                    
-                    // Update active bots count
-                    document.getElementById('active-bots').textContent = 
-                        `${Object.values(this.bots).filter(b => b.active).length}/12`;
-                    
-                    // Save to Firebase
-                    this.saveToFirebase();
-                }
-            }
-            
-            toggleAllBots() {
-                const allActive = Object.values(this.bots).every(bot => bot.active);
-                
-                Object.keys(this.bots).forEach(botId => {
-                    this.bots[botId].active = !allActive;
-                    const botElement = document.getElementById(`bot-${botId}`);
-                    const button = botElement?.querySelector('button');
-                    
-                    if (botElement && button) {
-                        if (!allActive) {
-                            botElement.classList.add('robot-active');
-                            botElement.querySelector('.text-gray-400').textContent = '🟢 نشط';
-                            button.textContent = 'إيقاف';
-                            button.className = 'text-sm bg-red-500 hover:bg-red-600 px-3 py-1 rounded';
-                        } else {
-                            botElement.classList.remove('robot-active');
-                            botElement.querySelector('.text-gray-400').textContent = '🔴 متوقف';
-                            button.textContent = 'تشغيل';
-                            button.className = 'text-sm bg-green-500 hover:bg-green-600 px-3 py-1 rounded';
-                        }
-                    }
-                });
-                
-                document.getElementById('active-bots').textContent = 
-                    `${Object.values(this.bots).filter(b => b.active).length}/12`;
-                
-                this.saveToFirebase();
-            }
-            
-            async saveToFirebase() {
-                if (!this.currentUser) {
-                    console.log('⚠️ لم يتم تسجيل الدخول، حفظ محلي فقط');
-                    this.saveToStorage();
-                    return;
-                }
-                
-                try {
-                    const userRef = db.collection('users').doc(this.currentUser.uid);
-                    await userRef.set({
-                        totalProfit: this.totalProfit,
-                        dailyProfit: this.dailyProfit,
-                        walletBalance: this.walletBalance,
-                        activeBots: Object.values(this.bots).filter(b => b.active).length,
-                        successRate: this.successRate,
-                        bots: this.bots,
-                        lastUpdated: new Date().toISOString()
-                    }, { merge: true });
-                    
-                    console.log('💾 البيانات حفظت في Firebase');
-                } catch (error) {
-                    console.error('❌ خطأ في حفظ Firebase:', error);
-                }
-            }
-            
-            async loadFromFirebase() {
-                if (!this.currentUser) {
-                    console.log('⚠️ لم يتم تسجيل الدخول، تحميل من التخزين المحلي');
-                    this.loadFromStorage();
-                    return;
-                }
-                
-                try {
-                    const userRef = db.collection('users').doc(this.currentUser.uid);
-                    const doc = await userRef.get();
-                    
-                    if (doc.exists) {
-                        const data = doc.data();
-                        this.totalProfit = data.totalProfit || this.totalProfit;
-                        this.dailyProfit = data.dailyProfit || this.dailyProfit;
-                        this.walletBalance = data.walletBalance || this.walletBalance;
-                        this.successRate = data.successRate || this.successRate;
-                        this.bots = data.bots || this.bots;
-                        
-                        this.updateUI();
+                this.isSaving = false
